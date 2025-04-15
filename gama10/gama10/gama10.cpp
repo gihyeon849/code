@@ -1,0 +1,174 @@
+﻿#include "raylib.h"
+#include <stdlib.h>
+
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 600
+
+#define PADDLE_WIDTH 100
+#define PADDLE_HEIGHT 20
+
+#define BLOCK_WIDTH 60
+#define BLOCK_HEIGHT 20
+
+#define ROWS 5
+#define COLUMNS 10
+
+typedef struct Block {
+    Rectangle rect;
+    bool active;
+    Color color;
+} Block;
+
+int main(void) {
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Brick Breaker");
+    InitAudioDevice();
+
+    Sound bounceSound = LoadSound("bounce.wav");
+    Sound breakSound = LoadSound("break.wav");
+
+    SetTargetFPS(60);
+
+    // 변수 초기화
+    int score = 0;
+    float paddleSpeed = 10.0f;
+
+    Rectangle paddle = {
+        SCREEN_WIDTH / 2 - PADDLE_WIDTH / 2,
+        SCREEN_HEIGHT - 40,
+        PADDLE_WIDTH,
+        PADDLE_HEIGHT
+    };
+
+    Vector2 ball = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
+    Vector2 ballSpeed = { -5.0f, -5.0f };
+
+    // 블록 생성
+    int blockCount = ROWS * COLUMNS;
+    Block* blocks = new Block[blockCount];
+
+    for (int y = 0; y < ROWS; y++) {
+        for (int x = 0; x < COLUMNS; x++) {
+            int index = y * COLUMNS + x;
+            blocks[index].rect = {
+                (float)(x * (BLOCK_WIDTH + 10) + 35),
+                (float)(y * (BLOCK_HEIGHT + 10) + 50),
+                BLOCK_WIDTH,
+                BLOCK_HEIGHT
+            };
+            blocks[index].active = true;
+            blocks[index].color = {
+                (unsigned char)GetRandomValue(100, 255),
+                (unsigned char)GetRandomValue(100, 255),
+                (unsigned char)GetRandomValue(100, 255),
+                255
+            };
+        }
+    }
+
+    enum GameScreen { TITLE, GAMEPLAY, GAMEOVER, WIN };
+    GameScreen screen = TITLE;
+
+    while (!WindowShouldClose()) {
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+
+        if (screen == TITLE) {
+            DrawText("Brick Breaker", SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 50, 40, BLACK);
+            DrawText("Press ENTER or SPACE to Start", SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 + 20, 20, DARKGRAY);
+
+            if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
+                screen = GAMEPLAY;
+                ball = { SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
+                ballSpeed = { -5.0f, -5.0f };
+            }
+        }
+
+        else if (screen == GAMEPLAY) {
+            // 패들 이동
+            if (IsKeyDown(KEY_LEFT) && paddle.x > 0)
+                paddle.x -= paddleSpeed;
+            if (IsKeyDown(KEY_RIGHT) && paddle.x + paddle.width < SCREEN_WIDTH)
+                paddle.x += paddleSpeed;
+
+            // 공 이동
+            ball.x += ballSpeed.x;
+            ball.y += ballSpeed.y;
+
+            // 벽 충돌
+            if (ball.x <= 0 || ball.x >= SCREEN_WIDTH) ballSpeed.x *= -1;
+            if (ball.y <= 0) ballSpeed.y *= -1;
+
+            // 바닥에 떨어지면 Game Over
+            if (ball.y >= SCREEN_HEIGHT) {
+                screen = GAMEOVER;
+            }
+
+            // 패들과 충돌
+            if (CheckCollisionCircleRec(ball, 10, paddle)) {
+                ballSpeed.y *= -1;
+                PlaySound(bounceSound);
+            }
+
+            // 블록 충돌
+            for (int i = 0; i < blockCount; i++) {
+                if (blocks[i].active && CheckCollisionCircleRec(ball, 10, blocks[i].rect)) {
+                    blocks[i].active = false;
+                    ballSpeed.y *= -1;
+                    score += 10;
+                    PlaySound(breakSound);
+                }
+            }
+
+            // 승리 조건
+            bool allCleared = true;
+            for (int i = 0; i < blockCount; i++) {
+                if (blocks[i].active) {
+                    allCleared = false;
+                    break;
+                }
+            }
+            if (allCleared) screen = WIN;
+
+            // 그리기
+            DrawRectangleRec(paddle, DARKGRAY);
+            DrawCircleV(ball, 10, RED);
+
+            for (int i = 0; i < blockCount; i++) {
+                if (blocks[i].active) {
+                    DrawRectangleRec(blocks[i].rect, blocks[i].color);
+                }
+            }
+
+            DrawText(TextFormat("Score: %d", score), 10, 10, 20, BLACK);
+        }
+
+        else if (screen == GAMEOVER) {
+            DrawText("Game Over!", SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 30, 40, RED);
+            DrawText("Press R to Restart", SCREEN_WIDTH / 2 - 120, SCREEN_HEIGHT / 2 + 20, 20, DARKGRAY);
+
+            if (IsKeyPressed(KEY_R)) {
+                screen = TITLE;
+            }
+        }
+
+        else if (screen == WIN) {
+            DrawText("You Win!", SCREEN_WIDTH / 2 - 80, SCREEN_HEIGHT / 2 - 30, 40, GREEN);
+            DrawText("Press R to Restart", SCREEN_WIDTH / 2 - 120, SCREEN_HEIGHT / 2 + 20, 20, DARKGRAY);
+
+            if (IsKeyPressed(KEY_R)) {
+                screen = TITLE;
+            }
+        }
+
+        EndDrawing();
+    }
+
+    // 정리
+    UnloadSound(bounceSound);
+    UnloadSound(breakSound);
+    delete[] blocks;
+    CloseAudioDevice();
+    CloseWindow();
+
+    return 0;
+}
